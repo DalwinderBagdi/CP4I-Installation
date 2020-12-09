@@ -1,0 +1,382 @@
+== CP4I Namespace Setup
+
+Create the namespaces needed for the cloud pak. We normally have one namespace per component.
+
+The cp4i namespace will hold the platform navigator.
+
+[source,bash]
+----
+ENTITLEMENT='ADD ENTITLEMENT KEY HERE'
+
+components=(cp4i apic ace aspera datapower eventstreams mq asset-repo od)
+
+for i in "${components[@]}"
+do
+  #Create project
+  oc new-project "$i"
+
+  #Add ibm-entitlement-key
+  oc create secret docker-registry ibm-entitlement-key --docker-username=cp --docker-password=$ENTITLEMENT --docker-server=cp.icr.io --namespace="$i"
+done
+----
+
+NOTE: Log in to https://myibm.ibm.com/products-services/containerlibrary[MyIBM Container Software] with the IBM ID and password that are associated with the entitled software. In the Entitlement Keys section, copy the entitlement key. This key will be used in future steps.
+
+== CP4I Operator Installation
+
+. Adding the Catalog Source
++
+The cloud paks require a separate catalog source to common service. Add the below catalog source:
++
+.Catalog source for Cloud Paks
+[source,yaml]
+----
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: ibm-operator-catalog
+  namespace: openshift-marketplace
+spec:
+  displayName: ibm-operator-catalog
+  publisher: IBM Content
+  sourceType: grpc
+  image: docker.io/ibmcom/ibm-operator-catalog
+  updateStrategy:
+    registryPoll:
+      interval: 45m
+----
++
+.Step by step
+[%collapsible]
+====
+.. Log into the openshift console.
++
+Click the + icon in the upper-right corner
++
+image::images/add yaml.png[640,480]
+.. Paste the above yaml
++
+image::images/cloud-pak-add-yaml.png[640,480]
+
+.. Click create
+
+.. Check that the catalog source is connected
++
+Click on YAML. The YAML shows a status section, check that the status shows READY.
++
+Initially it will say connecting
++
+image::images/cloud-pak-catalog-source-connecting.png[640,480]
++
+It will then update itself once the catalog is ready.
++
+image::images/cloud-pak-catalog-source-ready.png[640,480]
+====
+
+Cloud Pak for Integration provides a top-level operator to install all component operators OR allows you to individually install each component's operator.
+In this example we will use the top-level operator.
+
+. Install the Cloud Pak for Integration operator cluster wide
++
+.Step by step
+[%collapsible]
+====
+.. From the navigation pane, click Operators > OperatorHub. The OperatorHub page is displayed.
++
+image::images/operatorhub-side-menu.png[320,240]
+.. Search for 'Cloud Pak for Integration'
++
+image::images/operator-hub-cloud-pak.png[640,480]
+.. Click 'IBM Cloud Pak for Integration' and press Install
+
+image::images/cloud-pak-press-install.png[640,480]
+
+.. Install the operator cluster wide.
++
+Before we install we have the option to chose the channel, installation mode and approval strategy.
++
+Ensure you have the following values set:
++
+* Update Channel - `v1` (dev channel is for development purpose only)
+* Installation Mode - `All namespaces on the cluster`.
+* Approval Strategy - `Automatic`.
++
+image::images/cloud-pak-installation-options.png[640,480]
++
+Click Install
+====
+
+This will start installing all the components for the cloud pak
+
+On the `Installed Operators` page in the openshift-operators namespace you should see a screen similiar to this:
+image::images/cloud-pak-installation-started.png[640,480]
+
+*Wait until all Operators state that they are `Successful` and all pods state `Running` before continuing*
+
+Successful operators:
+
+image::images/cloud-pak-operators.png[640,480]
+
+Running pods:
+
+image::images/cloud-pak-pods.png[640,480]
+
+== Platform Navigator
+https://www.ibm.com/support/knowledgecenter/en/SSGT7J_20.2/install/install_platform_navigator.html[Documentation]
+
+.Advanced Platform Navigator Spec Details
+[%collapsible]
+====
+Example of a platform navigator with advanced configuration:
+[source, yaml]
+----
+apiVersion: integration.ibm.com/v1beta1
+kind: PlatformNavigator
+metadata:
+  name: integration-navigator
+  namespace: cp4i
+spec:
+  license:
+    accept: true # <1>
+  mqDashboard: true # <2>
+  replicas: 3 # <3>
+  version: 2020.3.1 # <4>
+  nodeSelector: {} # <5>
+  labels: {} # <6>
+  annotations: {} # <7>
+  resources: # <8>
+    navigator:
+      limits:
+        cpu: '1'
+        memory: 512Mi
+      requests:
+        cpu: '0.25'
+        memory: 256Mi
+    services:
+      limits:
+        cpu: '1'
+        memory: 512Mi
+      requests:
+        cpu: '0.25'
+        memory: 256Mi
+  template:  <9>
+    pod:
+      containers:
+        - image: placeholder
+          env: {} <10>
+          imagePullPolicy: IfNotPresent
+          resources:
+            navigator:
+              limits:
+                cpu: '1'
+                memory: 512Mi
+              requests:
+                cpu: '0.25'
+                memory: 256Mi
+            services:
+              limits:
+                cpu: '1'
+                memory: 512Mi
+              requests:
+                cpu: '0.25'
+                memory: 256Mi
+        - image: placeholder
+          imagePullPolicy: IfNotPresent
+          name: ibm-cp4i-prod-services
+      imagePullSecrets:
+        - ibm-entitlement-key
+        - artifactory-key
+----
+
+<1> Accepting the license - URL: https://ibm.biz/cp4i-licenses
+<2> Enables the MQ Grafana dashboard
+<3> The number of replica pods to run
+<4> The desired version or channel of the Platform Navigator.
+<5> Node selector for where pods should be scheduled.
+<6> Labels for Platform Navigator deployment.
+<7> Annotations for Platform Navigator deployment.
+<8> Resource settings for the navigator and services container within the pods
+<9> Verbose form that more strictly follows the standards of the Kubernetes API
+<10> Environment variables passed to container.
+====
+
+== Operational Dashboard
+
+https://www.ibm.com/support/knowledgecenter/en/SSGT7J_20.3/tracing/installation_and_configuration/installation/installation.html[Installation]
+
+https://www.ibm.com/support/knowledgecenter/en/SSGT7J_20.3/tracing/installation_and_configuration/troubleshooting/troubleshooting.html[Troubleshooting]
+
+== App Connect
+
+The app connect operator allows us to install the ACE Dashboard, ACE Designer and create integration servers.
+
+NOTE: If you want tracing (operational dashboard) enabled on your integration servers, then please deploy that first.
+
+https://www.ibm.com/support/knowledgecenter/SSTTDS_11.0.0/com.ibm.ace.icp.doc/certc_install_dashboardoperandreference.html#install[Dashboard installation]
+
+https://www.ibm.com/support/knowledgecenter/SSTTDS_11.0.0/com.ibm.ace.icp.doc/certc_install_specversion.html[Spec versions]
+
+https://www.ibm.com/support/knowledgecenter/SSTTDS_11.0.0/com.ibm.ace.icp.doc/certc_install_designeroperandreference.html#install[Designer installation]
+
+https://www.ibm.com/support/knowledgecenter/SSTTDS_11.0.0/com.ibm.ace.icp.doc/certc_install_integrationserveroperandreference.html[Creating an integration server]
+
+IMPORTANT: The ACE dashboard via platform navigator allows you to deploy only one bar file per container. However, you may be able to deploy multiple BAR files by building a CI/CD pipeline. It is advisable however, to follow certain Agile Integration guidelines on how you group your application/BAR files as a unit of deployment per container instead of deploying several applications to a single integration server. This is described in the https://community.ibm.com/community/user/imwuc/viewdocument/splitting-up-the-esb-grouping-inte?CommunityKey=77544459-9fda-40da-ae0b-fc8c76f0ce18&tab=librarydocuments&LibraryFolderKey=028cc27f-9de4-478d-a818-f0ba67621cb2&DefaultView=folder[article]
+
+== Datapower
+https://ibm.github.io/datapower-operator-doc/apis/datapowerservice/spec[Custom Resource Spec]
+
+NOTE: Make sure that storage has been set when creating the datapower instance. Without the storage being set, all configurations will be lost if the pod restarts.
+
+https://ibm.github.io/datapower-operator-doc/guides/domain-configuration/[Domain Configuration]
+
+.Exposing the WebUI
+[%collapsible]
+====
+By default, the web UI is not enabled.
+To enable this we do the following:
+
+. Edit the configmap to enable web-mgmt.
++
+So that the web UI setting stays persistant when we delete the pod, we want to edit the configmap that has the default configuration. The configmap ends in "default-domain-config"
++
+[source]
+----
+    web-mgmt
+      admin-state enabled
+      local-address 0.0.0.0
+      port 9090
+      save-config-overwrite
+      idle-timeout 9000
+      ssl-config-type server
+    exit
+----
+
+.  Restart the pod so that it picks up the new change
+
+.  Create a service to point at the web-ui
++
+Note: If datapower has been deployed via API Connect this service has already been created. The service is called:
+<release-name>-datapower
++
+[source]
+----
+kind: Service
+apiVersion: v1
+metadata:
+  name: datapower-ibm-datapower-icp4i
+  namespace: datapower
+spec:
+  ports:
+    - name: webui
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+  selector:
+    app.kubernetes.io/name: <THIS HAS TO MATCH A LABEL ON THE GATEWAY POD>
+status:
+  loadBalancer: {}
+----
+
+. Create a route that links to the service:
++
+[source]
+----
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: <ROUTE-NAME>
+  namespace: <NAMESPACE>
+spec:
+  to:
+    kind: Service
+    name: <SERVICE-NAME>
+    weight: 100
+  port:
+    targetPort: webui
+  tls:
+    termination: passthrough
+    insecureEdgeTerminationPolicy: None
+  wildcardPolicy: None
+----
+====
+
+== Event Streams
+https://ibm.github.io/event-streams/installing/installing/#install-an-event-streams-instance[Building an image with custom MQ (using image streams)]
+
+== MQ
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_deploy_qmgr_cp4i.htm[Creating an MQ via the platform navigator]
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_deploy_qmgr_ocp_web.htm[Creating an MQ via Openshift Web Console]
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_deploy_qmgr.htm[Creating an MQ via CLI]
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_storage.htm[Storage considerations]
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_api_v1beta1_QueueManager.htm[Full MQ Operator spec]
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_supply_mqsc_ini.htm[Supplying a MQSC when deploying MQ]
+
+https://www.ibm.com/support/knowledgecenter/SSFKSJ_9.2.0/com.ibm.mq.ctr.doc/ctr_build_layer_ocp.htm[Building an image with custom MQ (using image streams)]
+
+== Asset Repo
+https://www.ibm.com/support/knowledgecenter/en/SSGT7J_20.3/asset_repo.html#installation[Documentation]
+
+== Aspera
+https://www.ibm.com/support/knowledgecenter/en/SSGT7J_20.2/install/install_aspera.html[Documentation]
+
+== API Connect
+https://www.ibm.com/support/knowledgecenter/en/SSGT7J_20.2/install/install_api.html[Documentation]
+
+https://www.ibm.com/support/knowledgecenter/SSMNED_v10/com.ibm.apic.install.doc/tapic_v10_install_icp4i.html#tapic_v10_install_icp4i__section_lwj_lxx_bnb[Advanced Configuration]
+
+.Exposing the WebUI for Gateway
+[%collapsible]
+====
+By default, the web UI is not enabled.
+To enable this we do the following:
+
+. Edit the configmap to enable web-mgmt.
++
+So that the web UI setting stays persistant when we delete the pod, we want to edit the configmap that has the default configuration. The configmap ends in "default-domain-config"
++
+[source]
+----
+    web-mgmt
+      admin-state enabled
+      local-address 0.0.0.0
+      port 9090
+      save-config-overwrite
+      idle-timeout 9000
+      ssl-config-type server
+    exit
+----
+
+.  Restart the pod so that it picks up the new change
+
+. Create a route that links to the service:
++
+A service has already been created. The service is called: `<release-name>-datapower-all`
++
+[source]
+----
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: <ROUTE-NAME>
+  namespace: <NAMESPACE>
+spec:
+  to:
+    kind: Service
+    name: <release-name>-datapower-all
+    weight: 100
+  port:
+    targetPort: webgui-port
+  tls:
+    termination: passthrough
+    insecureEdgeTerminationPolicy: None
+  wildcardPolicy: None
+----
++
+Login credentials are stored in a secret called <release-name>-gw-admin
+====

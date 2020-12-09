@@ -1,0 +1,5 @@
+= CP4I Installation
+
+Step 1 -  link:Common-services-installation.asciidoc[Installing Common Services]
+
+Step 2 -  link:CP4I-installation.asciidoc[Installing Cloud Pak for Integration]

@@ -1,0 +1,258 @@
+= Common Services Installation
+
+Common Services is available in 3 different profiles.
+By default CP4I is installed with the medium profile.
+If we want to chose a different profile or configure Common Services in any other way we must install common services first.
+
+.Common Service Profiles
+|===
+|Profile | Description |vCPU per worker node |Memory (GiB) per worker node
+
+|Small
+|For environments that are used by a single department with fewer users; useful for application development
+|4
+|16
+
+|Medium
+|For environments that are used by a single department and by limited users
+|8
+|32
+
+|Large
+|For environments that are shared by multiple departments and users
+|16
+|32
+|===
+
+In all the POC environment we have been using the profile medium.
+It might be worth considering whether a large profile is more suited to your needs. More information can be found https://www.ibm.com/support/knowledgecenter/en/SSHKN6/installer/3.x.x/hardware_sizing_reqs.html[here]
+
+== Installation:
+
+If we want to configure common services (i.e. specific hardware profile), we have to install it separately to the cloud pak. The common service installation must be completed first.
+
+. Adding the Catalog Source
++
+This CatalogSource will enable you to search and install Common Services from the OperatorHub.
++
+NOTE: The image of this catalog source is set to latest. Having the image set to latest will auto-upgrade when a new version is released. If you want to make sure that your version of common services is not automatically updated set your image to a specific version. i.e `docker.io/ibmcom/ibm-common-service-catalog:3.6.2`
++
+.Catalog source for Common Services
+[source,yaml]
+----
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: opencloud-operators
+  namespace: openshift-marketplace
+spec:
+  displayName: IBMCS Operators
+  publisher: IBM
+  sourceType: grpc
+  image: docker.io/ibmcom/ibm-common-service-catalog:latest
+  updateStrategy:
+    registryPoll:
+      interval: 45m
+----
++
+.Step by step
+[%collapsible]
+====
+.. Log into the openshift console.
++
+Click the + icon in the upper-right corner
++
+image::images/add yaml.png[640,480]
+.. Paste the above yaml
++
+image::images/yaml copied.png[640,480]
+
+.. Click create
+
+.. Check that the catalog source is connected
++
+Click on YAML. The YAML shows a status section, check that the status shows READY.
++
+Initially it will say connecting
++
+image::images/catalog-source-connecting.png[640,480]
++
+It will then update itself once the catalog is ready.
+
+image::images/catalog-source-ready.png.png[640,480]
+
+====
+
+. Install the Common Service operator cluster wide
++
+.Step by step
+[%collapsible]
+====
+.. From the navigation pane, click Operators > OperatorHub. The OperatorHub page is displayed.
++
+image::images/operatorhub-side-menu.png[320,240]
+.. Search for 'Common Service'
++
+image::images/operator-hub-common-service.png[640,480]
+.. Click 'IBM Common Service Operator' and press Install
+
+image::images/common-service-press-install.png[640,480]
+
+.. Install the operator cluster wide.
++
+Before we install we have the option to chose the channel, installation mode and approval strategy.
++
+Ensure you have the following values set:
++
+* Update Channel - `stable-v1` (dev channel is for development purpose only)
+* Installation Mode - `All namespaces on the cluster`.
+* Approval Strategy - `Automatic`.
++
+image::images/common-service-installation-options.png[640,480]
++
+Click Install
+====
+
++
+IMPORTANT: The above steps have installed the operator in the openshift-operator namespace.  The IBM Common Service Operator creates the ibm-common-services namespace and installs the Operand Deployment Lifecycle Manager Operator and the IBM NamespaceScope Operator in the ibm-common-services namespace. The IBM Common Service Operator creates the CommonService custom resource.
+. In the ibm-common-services make sure all the pods are Running and not showing any errors before proceeding.
+
+. (Optional) Edit the size in the common-service profile deployment
++
+.. In the ibm-common-service namespace search for the CR called common-service which is of type CommonService
++
+image::images/common-service-search.png[640,480]
++
+image::images/common-service-search-2.png[640,480]
+.. Change the `size` value in the yaml
++
+image::images/common-service-size-medium.png[640,480]
+(This sizes are the profiles that were documented at the start of this document)
+
+. (Optional) Common Services Configuration
++
+You can also use the common-services custom resource to configure the common services before you install them.
++
+Follow this link for settings that can be edited:
++
+https://www.ibm.com/support/knowledgecenter/SSHKN6/installer/3.x.x/custom_resource.html
+
+. Create the OperandRequest to specify the services that you want to install in your cluster.
++
+NOTE: The OperandRequest is the API where you add the services that you want to install in your cluster.
++
+.. In the ibm-common-services namespace click `Installed Operators` and select the `Operands Deployment Lifecycle Manager`
++
+image::images/operand-deploymnet-lifecycle.png[640,480]
+
+.. Click `Create OperandRequest`
++
+image::images/new-operand-request.png[]
++
+.. Paste in the following yaml
++
+NOTE: The operands list is an example. For a list of common services that you can install, see https://www.ibm.com/support/knowledgecenter/SSHKN6/installer/3.x.x/install_operator.html?view=kc#ops[IBM Cloud Platform Common Services Operators and versions].
++
+[source,yaml]
+----
+apiVersion: operator.ibm.com/v1alpha1
+kind: OperandRequest
+metadata:
+  name: common-service
+  namespace: ibm-common-services
+  labels:
+    app.kubernetes.io/instance: operand-deployment-lifecycle-manager
+    app.kubernetes.io/managed-by: operand-deployment-lifecycle-manager
+    app.kubernetes.io/name: odlm
+spec:
+  requests:
+    - operands:
+        - name: ibm-cert-manager-operator
+        - name: ibm-mongodb-operator
+        - name: ibm-iam-operator
+        - name: ibm-monitoring-exporters-operator
+        - name: ibm-monitoring-prometheusext-operator
+        - name: ibm-monitoring-grafana-operator
+        - name: ibm-healthcheck-operator
+        - name: ibm-management-ingress-operator
+        - name: ibm-licensing-operator
+        - name: ibm-metering-operator
+        - name: ibm-commonui-operator
+        - name: ibm-events-operator
+        - name: ibm-elastic-stack-operator
+        - name: ibm-ingress-nginx-operator
+        - name: ibm-auditlogging-operator
+        - name: ibm-platform-api-operator
+        - name: ibm-helm-api-operator
+        - name: ibm-helm-repo-operator
+        - name: ibm-catalog-ui-operator
+      registry: common-service
+----
++
+.. Click `Create`
++
+This will take some time to deploy. If you click on the `Installed operators` tab you will see the operators will start to install.
++
+image::images/operators-installing.png[640,480]
+
+.. Verify the installation by running
++
+`oc get pods -n ibm-common-services`
++
+
+*Wait until all operators state `Succeeded` and all pods are `Running` before continuing*
+
+. Extra Configuration
+
+.. Changing the cluster admin username
++
+https://www.ibm.com/support/knowledgecenter/SSHKN6/iam/3.x.x/change_admin_passwd.html
+
+.. Changing the cluster password
++
+https://www.ibm.com/support/knowledgecenter/SSHKN6/iam/3.x.x/change_admin_passwd.html#pwd
+
+This may require you to login to cloudctl
+
+oc get route default-route -n openshift-image-registry --template='{{ .spec.host }}'
+
+[source,bash]
+----
+ROUTE=$(oc get route cp-console -n ibm-common-services --template='{{ .spec.host }}')
+
+CP_PASSWORD=`oc -n ibm-common-services get secret platform-auth-idp-credentials -o jsonpath='{.data.admin_password}' | base64 -d`
+
+cloudctl login -a $ROUTE --skip-ssl-validation -u admin -p $CP_PASSWORD -n ibm-common-services
+
+----
+
+== Common Services Installation Summary
+
+The *IBM Common Service Operator* has been installed cluster wide.
+
+All common services are installed in the `ibm-common-services` namespace.
+
+When the *IBM Common Service Operator* has been installed it, the *Operand Deployment Lifecycle Manager* is also installed.
+
+The Operand Deployment Lifecycle Manager provides the following APIs:
+
+. OperandConfig includes all the services that are available for you to install in your cluster.
+. OperandRegistry is for internal management of the services.
+. OperandRequest is the API where you add the services that you want to install in your cluster.
+. OperandBindInfo is the API that manages secrets and configmaps between namespaces.
+
+.Useful pods
+|===
+|Name | Description
+
+|auth-idp
+|Authentication audit logs
+
+|auth-pdp
+|Authorization audit logs
+
+|auth-pap
+|Policy administration point audit logs
+
+|icp-oidcclient-watcher
+|IBM Cloud Private OIDC Client Registration Service
