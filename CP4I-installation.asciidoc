@@ -235,12 +235,17 @@ https://ibm.github.io/datapower-operator-doc/guides/domain-configuration/[Domain
 By default, the web UI is not enabled.
 To enable this we do the following:
 
-. Edit the configmap to enable web-mgmt.
-+
-So that the web UI setting stays persistant when we delete the pod, we want to edit the configmap that has the default configuration. The configmap ends in "default-domain-config"
+. Create a configmap that will hold the web-mgmt config
 +
 [source]
 ----
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: web-mgmt-config
+  namespace: datapower
+data:
+  web-mgmt.cfg: |
     web-mgmt
       admin-state enabled
       local-address 0.0.0.0
@@ -249,9 +254,29 @@ So that the web UI setting stays persistant when we delete the pod, we want to e
       idle-timeout 9000
       ssl-config-type server
     exit
+
 ----
 
-.  Restart the pod so that it picks up the new change
+.  Specify the configmap when creating/editing the datapower instance
+
++
+[source]
+----
+apiVersion: datapower.ibm.com/v1beta1
+kind: DataPowerService
+metadata:
+  name: dp-service
+  namespace: datapower
+spec:
+  ...
+  domains:
+    - dpApp:
+        config:
+          - web-mgmt-config
+      name: default
+  ...
+----
+
 
 .  Create a service to point at the web-ui
 +
